@@ -30,7 +30,12 @@ import {
   User,
   Music,
   Eye,
-  EyeOff
+  EyeOff,
+  Share,
+  Download,
+  PlusSquare,
+  ExternalLink,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -60,6 +65,53 @@ export default function App() {
   const [teleprompterText, setTeleprompterText] = useState('Bem-vindo ao InfluCam! Este é o seu teleprompter. Você pode ajustar a velocidade e o tamanho do texto aqui.');
   const [showScript, setShowScript] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
+
+  // PWA States
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isSafari, setIsSafari] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showIOSModal, setShowIOSModal] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsInstalled(true);
+    }
+
+    // Detect iOS
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
+    setIsIOS(isIOSDevice);
+
+    // Detect Safari (specifically on iOS)
+    const isSafariBrowser = /safari/.test(userAgent) && !/chrome|crios|fxios|opr|mercury/i.test(userAgent);
+    setIsSafari(isSafariBrowser);
+
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (isInstalled) return;
+
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setIsInstalled(true);
+      }
+    } else if (isIOS) {
+      setShowIOSModal(true);
+    }
+  };
 
   useEffect(() => {
     const checkOrientation = () => {
@@ -214,15 +266,16 @@ export default function App() {
         oldStream.getTracks().forEach(track => track.stop());
       }
 
-      const videoConstraints: any = {
-        width: isVertical ? { ideal: 1080 } : { ideal: 1920 },
-        height: isVertical ? { ideal: 1920 } : { ideal: 1080 },
-        aspectRatio: isVertical ? { ideal: 9/16 } : { ideal: 16/9 }
-      };
+      // Find the device to check if it's front or back (optional hint)
+      const device = devices.find(d => d.deviceId === deviceId);
+      const isFront = device ? device.label.toLowerCase().includes('front') || device.label.toLowerCase().includes('frontal') : true;
 
-      if (deviceId) {
-        videoConstraints.deviceId = { ideal: deviceId };
-      }
+      const videoConstraints: any = {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        facingMode: deviceId ? undefined : (isFront ? 'user' : 'environment'),
+        width: { ideal: isVertical ? 720 : 1280 },
+        height: { ideal: isVertical ? 1280 : 720 }
+      };
 
       const constraints: MediaStreamConstraints = {
         video: videoConstraints,
@@ -1156,6 +1209,39 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">Aplicativo</label>
+                <div className="liquid-glass rounded-3xl p-6">
+                  <button 
+                    onClick={handleInstallClick}
+                    disabled={isInstalled || (!deferredPrompt && !isIOS)}
+                    className={cn(
+                      "w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all",
+                      isInstalled 
+                        ? "bg-green-500/20 text-green-500 border border-green-500/30 cursor-default" 
+                        : "bg-white/5 hover:bg-white/10 border border-white/10 text-white"
+                    )}
+                  >
+                    {isInstalled ? (
+                      <>
+                        <Zap size={18} />
+                        App já instalado
+                      </>
+                    ) : (
+                      <>
+                        <Download size={18} />
+                        Instalar como APP
+                      </>
+                    )}
+                  </button>
+                  {!isInstalled && !deferredPrompt && !isIOS && (
+                    <p className="text-[10px] text-white/40 mt-3 text-center px-4">
+                      Seu navegador não suporta instalação direta. Tente usar o Chrome ou Safari.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             <button 
@@ -1223,6 +1309,85 @@ export default function App() {
               {settings.projectName}
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* iOS Install Modal */}
+      <AnimatePresence>
+        {showIOSModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowIOSModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm liquid-glass rounded-[32px] p-8 overflow-hidden"
+            >
+              <button 
+                onClick={() => setShowIOSModal(false)}
+                className="absolute top-4 right-4 p-2 text-white/40 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-[#f51492] rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-[#f51492]/20">
+                  <Download className="text-white" size={32} />
+                </div>
+                
+                <h3 className="text-xl font-bold mb-2">Instalar InfluCam</h3>
+                <p className="text-sm text-white/60 mb-8">
+                  Adicione o InfluCam à sua tela de início para uma experiência completa de câmera.
+                </p>
+
+                {!isSafari ? (
+                  <div className="w-full p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl mb-6">
+                    <div className="flex items-center gap-2 text-amber-500 mb-1">
+                      <ExternalLink size={16} />
+                      <span className="text-xs font-bold uppercase tracking-wider">Atenção</span>
+                    </div>
+                    <p className="text-xs text-amber-500/80 leading-relaxed">
+                      Detectamos que você não está no Safari. Para instalar, abra este link no navegador Safari do seu iPhone.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="w-full space-y-4">
+                    <div className="flex items-start gap-4 text-left">
+                      <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
+                      <div className="text-sm">
+                        Toque no botão de <span className="font-bold text-white flex items-center gap-1 inline-flex">Compartilhar <Share size={14} className="text-blue-400" /></span> na barra inferior do Safari.
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-4 text-left">
+                      <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
+                      <div className="text-sm">
+                        Role para baixo e toque em <span className="font-bold text-white flex items-center gap-1 inline-flex">Adicionar à Tela de Início <PlusSquare size={14} /></span>.
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-4 text-left">
+                      <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</div>
+                      <div className="text-sm">
+                        Toque em <span className="font-bold text-[#f51492]">Adicionar</span> no canto superior direito.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <button 
+                  onClick={() => setShowIOSModal(false)}
+                  className="mt-8 w-full py-4 bg-white/10 hover:bg-white/20 rounded-2xl font-bold transition-all text-sm uppercase tracking-widest"
+                >
+                  Entendi
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
