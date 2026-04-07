@@ -1,0 +1,8 @@
+{
+  "name": "Remix: InfluCam",
+  "description": "Câmera inteligente para creators: gravação dupla, react, teleprompter e organização por projetos.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
